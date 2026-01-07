@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battery Monitor Dashboard</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/recharts@2/umd/Recharts.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #1a1a24;
+            --border: #2a2a3a;
+            --text-primary: #e8e8f0;
+            --text-secondary: #8888a0;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --accent-purple: #a855f7;
+            --gradient-start: #1e1e2e;
+            --gradient-end: #0a0a12;
+        }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        #root {
+            min-height: 100vh;
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo } = React;
+        const {
+            LineChart, Line, AreaChart, Area, BarChart, Bar,
+            XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+            ComposedChart
+        } = Recharts;
+
+        // Styled components
+        const Card = ({ children, className = '', style = {} }) => (
+            <div
+                className={className}
+                style={{
+                    background: 'rgba(26, 26, 36, 0.8)',
+                    backdropFilter: 'blur(12px)',
+                    borderRadius: '16px',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    padding: '24px',
+                    ...style,
+                }}
+            >
+                {children}
+            </div>
+        );
+
+        const StatCard = ({ label, value, unit, icon, color = '#22c55e', subtext }) => (
+            <Card style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: 'var(--text-secondary)',
+                    fontSize: '14px',
+                }}>
+                    <span style={{ fontSize: '18px' }}>{icon}</span>
+                    {label}
+                </div>
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: '4px',
+                }}>
+                    <span className="mono" style={{
+                        fontSize: '32px',
+                        fontWeight: '600',
+                        color,
+                    }}>
+                        {value}
+                    </span>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                        {unit}
+                    </span>
+                </div>
+                {subtext && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        {subtext}
+                    </div>
+                )}
+            </Card>
+        );
+
+        const BatteryGauge = ({ percentage, health }) => {
+            const getColor = (pct) => {
+                if (pct > 50) return '#22c55e';
+                if (pct > 20) return '#eab308';
+                return '#ef4444';
+            };
+
+            return (
+                <Card style={{ textAlign: 'center' }}>
+                    <div style={{ marginBottom: '16px', color: 'var(--text-secondary)' }}>
+                        Latest Battery Level
+                    </div>
+                    <div style={{ position: 'relative', width: '180px', height: '180px', margin: '0 auto' }}>
+                        <svg viewBox="0 0 180 180" style={{ transform: 'rotate(-90deg)' }}>
+                            <circle
+                                cx="90" cy="90" r="75"
+                                fill="none"
+                                stroke="rgba(255,255,255,0.1)"
+                                strokeWidth="12"
+                            />
+                            <circle
+                                cx="90" cy="90" r="75"
+                                fill="none"
+                                stroke={getColor(percentage)}
+                                strokeWidth="12"
+                                strokeLinecap="round"
+                                strokeDasharray={`${percentage * 4.71} 471`}
+                                style={{ transition: 'stroke-dasharray 0.5s ease' }}
+                            />
+                        </svg>
+                        <div style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            textAlign: 'center',
+                        }}>
+                            <div className="mono" style={{
+                                fontSize: '42px',
+                                fontWeight: '700',
+                                color: getColor(percentage),
+                            }}>
+                                {Math.round(percentage)}%
+                            </div>
+                            <div style={{
+                                fontSize: '12px',
+                                color: 'var(--text-secondary)',
+                                marginTop: '4px',
+                            }}>
+                                {health.toFixed(1)}% health
+                            </div>
+                        </div>
+                    </div>
+                </Card>
+            );
+        };
+
+        const DailyStatsChart = ({ data }) => {
+            const chartData = useMemo(() =>
+                [...data].reverse().map(d => ({
+                    date: d.date.slice(5), // MM-DD
+                    min: d.min_percentage,
+                    max: d.max_percentage,
+                    avg: d.avg_percentage,
+                    samples: d.sample_count,
+                })),
+                [data]
+            );
+
+            if (!data || data.length === 0) {
+                return (
+                    <Card>
+                        <h3 style={{ marginBottom: '20px', fontSize: '16px' }}>
+                            Daily Battery Range
+                        </h3>
+                        <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px' }}>
+                            No daily statistics available
+                        </div>
+                    </Card>
+                );
+            }
+
+            return (
+                <Card>
+                    <h3 style={{ marginBottom: '20px', fontSize: '16px' }}>
+                        Daily Battery Range (Min/Avg/Max)
+                    </h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                        <ComposedChart data={chartData}>
+                            <defs>
+                                <linearGradient id="rangeGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3}/>
+                                    <stop offset="100%" stopColor="#ef4444" stopOpacity={0.1}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                            <XAxis dataKey="date" stroke="#888" fontSize={11} />
+                            <YAxis stroke="#888" fontSize={11} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                            <Tooltip
+                                contentStyle={{
+                                    background: 'rgba(20,20,30,0.95)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '8px',
+                                }}
+                                formatter={(v, name) => [`${Math.round(v)}%`, name]}
+                            />
+                            <Area type="monotone" dataKey="max" stroke="#22c55e" fill="url(#rangeGrad)" strokeWidth={2} name="Max" />
+                            <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} dot={false} name="Avg" />
+                            <Area type="monotone" dataKey="min" stroke="#ef4444" fill="transparent" strokeWidth={2} name="Min" />
+                        </ComposedChart>
+                    </ResponsiveContainer>
+                </Card>
+            );
+        };
+
+        const DrainChart = ({ data }) => {
+            const chartData = useMemo(() => {
+                // Fill in missing hours with 0
+                const hourMap = {};
+                data.forEach(d => { hourMap[d.hour] = d; });
+                return Array.from({ length: 24 }, (_, i) => {
+                    const hour = i.toString().padStart(2, '0');
+                    const existing = hourMap[hour];
+                    return {
+                        hour,
+                        drain: existing ? Math.abs(existing.avg_drain_per_sample || 0) : 0,
+                        samples: existing?.samples || 0,
+                    };
+                });
+            }, [data]);
+
+            if (!data || data.length === 0) {
+                return (
+                    <Card>
+                        <h3 style={{ marginBottom: '20px', fontSize: '16px' }}>
+                            Hourly Drain Patterns
+                        </h3>
+                        <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px' }}>
+                            No drain pattern data available
+                        </div>
+                    </Card>
+                );
+            }
+
+            return (
+                <Card>
+                    <h3 style={{ marginBottom: '20px', fontSize: '16px' }}>
+                        Hourly Drain Patterns
+                    </h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                        <AreaChart data={chartData}>
+                            <defs>
+                                <linearGradient id="drainGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#a855f7" stopOpacity={0.4}/>
+                                    <stop offset="100%" stopColor="#a855f7" stopOpacity={0}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                            <XAxis
+                                dataKey="hour"
+                                stroke="#888"
+                                fontSize={11}
+                                tickFormatter={(h) => `${h}:00`}
+                            />
+                            <YAxis
+                                stroke="#888"
+                                fontSize={11}
+                                tickFormatter={(v) => `${v.toFixed(0)}%`}
+                            />
+                            <Tooltip
+                                contentStyle={{
+                                    background: 'rgba(20,20,30,0.95)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '8px',
+                                }}
+                                labelFormatter={(h) => `${h}:00`}
+                                formatter={(v, name) => [name === 'drain' ? `${v.toFixed(1)}%/sample` : v, name === 'drain' ? 'Drain' : 'Samples']}
+                            />
+                            <Area
+                                type="monotone"
+                                dataKey="drain"
+                                stroke="#a855f7"
+                                fill="url(#drainGrad)"
+                                strokeWidth={2}
+                            />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </Card>
+            );
+        };
+
+        const AppImpactChart = ({ data }) => {
+            const COLORS = ['#3b82f6', '#22c55e', '#eab308', '#ef4444', '#a855f7', '#06b6d4', '#f97316', '#ec4899'];
+
+            if (!data || data.length === 0) {
+                return (
+                    <Card>
+                        <h3 style={{ marginBottom: '20px', fontSize: '16px' }}>
+                            App Power Consumption
+                        </h3>
+                        <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px' }}>
+                            No app data available
+                        </div>
+                    </Card>
+                );
+            }
+
+            // Filter out system processes and sort by wattage
+            const filteredData = data
+                .filter(d => d.avg_wattage_when_active != null)
+                .sort((a, b) => b.avg_wattage_when_active - a.avg_wattage_when_active)
+                .slice(0, 8);
+
+            return (
+                <Card>
+                    <h3 style={{ marginBottom: '20px', fontSize: '16px' }}>
+                        App Power Consumption
+                    </h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={filteredData} layout="vertical">
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                            <XAxis
+                                type="number"
+                                stroke="#888"
+                                fontSize={11}
+                                tickFormatter={(v) => `${v}W`}
+                            />
+                            <YAxis
+                                type="category"
+                                dataKey="app_name"
+                                stroke="#888"
+                                fontSize={11}
+                                width={100}
+                            />
+                            <Tooltip
+                                contentStyle={{
+                                    background: 'rgba(20,20,30,0.95)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '8px',
+                                }}
+                                formatter={(v, name, props) => [
+                                    `${v.toFixed(1)}W avg (${props.payload.frequency} samples)`,
+                                    'Power'
+                                ]}
+                            />
+                            <Bar dataKey="avg_wattage_when_active" radius={[0, 4, 4, 0]}>
+                                {filteredData.map((_, i) => (
+                                    <Recharts.Cell key={i} fill={COLORS[i % COLORS.length]} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </Card>
+            );
+        };
+
+        const TimelineChart = ({ data }) => {
+            const chartData = useMemo(() =>
+                data.slice(-200).map(d => ({
+                    time: new Date(d.timestamp).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false,
+                    }),
+                    percentage: d.percentage,
+                    wattage: d.wattage,
+                    temp: d.temperature_celsius,
+                })),
+                [data]
+            );
+
+            if (!data || data.length === 0) {
+                return (
+                    <Card>
+                        <h3 style={{ marginBottom: '20px', fontSize: '16px' }}>
+                            Battery Level Timeline
+                        </h3>
+                        <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px' }}>
+                            No snapshot data available. Make sure to re-export with the latest version.
+                        </div>
+                    </Card>
+                );
+            }
+
+            return (
+                <Card>
+                    <h3 style={{ marginBottom: '20px', fontSize: '16px' }}>
+                        Battery Level Timeline ({data.length} snapshots)
+                    </h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                        <AreaChart data={chartData}>
+                            <defs>
+                                <linearGradient id="batteryGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.5}/>
+                                    <stop offset="50%" stopColor="#eab308" stopOpacity={0.3}/>
+                                    <stop offset="100%" stopColor="#ef4444" stopOpacity={0.1}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                            <XAxis
+                                dataKey="time"
+                                stroke="#888"
+                                fontSize={10}
+                                interval="preserveStartEnd"
+                            />
+                            <YAxis
+                                stroke="#888"
+                                fontSize={11}
+                                domain={[0, 100]}
+                                tickFormatter={(v) => `${v}%`}
+                            />
+                            <Tooltip
+                                contentStyle={{
+                                    background: 'rgba(20,20,30,0.95)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '8px',
+                                }}
+                                formatter={(v, name) => {
+                                    if (name === 'percentage') return [`${v}%`, 'Battery'];
+                                    if (name === 'wattage') return [`${v?.toFixed(1) || 'N/A'}W`, 'Power'];
+                                    if (name === 'temp') return [`${v?.toFixed(1) || 'N/A'}°C`, 'Temp'];
+                                    return [v, name];
+                                }}
+                            />
+                            <Area
+                                type="monotone"
+                                dataKey="percentage"
+                                stroke="#22c55e"
+                                fill="url(#batteryGrad)"
+                                strokeWidth={2}
+                            />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </Card>
+            );
+        };
+
+        const SessionsTable = ({ data }) => {
+            if (!data || data.length === 0) {
+                return (
+                    <Card>
+                        <h3 style={{ marginBottom: '20px', fontSize: '16px' }}>
+                            Recent Discharge Sessions
+                        </h3>
+                        <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px' }}>
+                            No discharge sessions recorded yet
+                        </div>
+                    </Card>
+                );
+            }
+
+            return (
+                <Card>
+                    <h3 style={{ marginBottom: '20px', fontSize: '16px' }}>
+                        Recent Discharge Sessions
+                    </h3>
+                    <div style={{ overflowX: 'auto' }}>
+                        <table className="mono" style={{
+                            width: '100%',
+                            borderCollapse: 'collapse',
+                            fontSize: '13px',
+                        }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                    <th style={{ padding: '12px 8px', textAlign: 'left', color: 'var(--text-secondary)' }}>Date</th>
+                                    <th style={{ padding: '12px 8px', textAlign: 'right', color: 'var(--text-secondary)' }}>Duration</th>
+                                    <th style={{ padding: '12px 8px', textAlign: 'right', color: 'var(--text-secondary)' }}>Drain</th>
+                                    <th style={{ padding: '12px 8px', textAlign: 'right', color: 'var(--text-secondary)' }}>Rate</th>
+                                    <th style={{ padding: '12px 8px', textAlign: 'right', color: 'var(--text-secondary)' }}>Avg Power</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.slice(0, 10).map((session, i) => {
+                                    const drain = (session.start_percentage || 0) - (session.end_percentage || 0);
+                                    const rate = session.drain_rate_per_hour || 0;
+                                    const rateColor = rate > 15 ? '#ef4444' : rate > 10 ? '#eab308' : '#22c55e';
+
+                                    return (
+                                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <td style={{ padding: '12px 8px' }}>
+                                                {session.start_time ? new Date(session.start_time).toLocaleDateString() : 'N/A'}
+                                            </td>
+                                            <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                                                {session.duration_minutes ? `${Math.floor(session.duration_minutes / 60)}h ${Math.round(session.duration_minutes % 60)}m` : 'N/A'}
+                                            </td>
+                                            <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                                                {drain}%
+                                            </td>
+                                            <td style={{ padding: '12px 8px', textAlign: 'right', color: rateColor }}>
+                                                {rate.toFixed(1)}%/h
+                                            </td>
+                                            <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                                                {session.avg_wattage ? session.avg_wattage.toFixed(1) + 'W' : 'N/A'}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            );
+        };
+
+        const PowerAssertionsTable = ({ data }) => {
+            if (!data || data.length === 0) {
+                return (
+                    <Card>
+                        <h3 style={{ marginBottom: '20px', fontSize: '16px' }}>
+                            Power Assertions (Sleep Prevention)
+                        </h3>
+                        <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px' }}>
+                            No power assertion data available
+                        </div>
+                    </Card>
+                );
+            }
+
+            // Sort by frequency
+            const sortedData = [...data].sort((a, b) => b.frequency - a.frequency).slice(0, 10);
+
+            return (
+                <Card>
+                    <h3 style={{ marginBottom: '20px', fontSize: '16px' }}>
+                        Power Assertions (Sleep Prevention)
+                    </h3>
+                    <div style={{ overflowX: 'auto' }}>
+                        <table className="mono" style={{
+                            width: '100%',
+                            borderCollapse: 'collapse',
+                            fontSize: '13px',
+                        }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                    <th style={{ padding: '12px 8px', textAlign: 'left', color: 'var(--text-secondary)' }}>Process</th>
+                                    <th style={{ padding: '12px 8px', textAlign: 'right', color: 'var(--text-secondary)' }}>Frequency</th>
+                                    <th style={{ padding: '12px 8px', textAlign: 'left', color: 'var(--text-secondary)' }}>Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {sortedData.map((assertion, i) => {
+                                    // Extract just the assertion name from the reasons string
+                                    const reasonMatch = assertion.reasons?.match(/named: "([^"]+)"/);
+                                    const shortReason = reasonMatch ? reasonMatch[1] : assertion.reasons?.slice(0, 50) || 'Unknown';
+
+                                    return (
+                                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <td style={{ padding: '12px 8px', color: '#3b82f6' }}>
+                                                {assertion.process}
+                                            </td>
+                                            <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                                                {assertion.frequency}x
+                                            </td>
+                                            <td style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                                                {shortReason}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            );
+        };
+
+        const FileUpload = ({ onDataLoad, hasData }) => {
+            const handleFileChange = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    try {
+                        const text = await file.text();
+                        const data = JSON.parse(text);
+                        onDataLoad(data);
+                    } catch (err) {
+                        alert('Error parsing JSON file: ' + err.message);
+                    }
+                }
+            };
+
+            return (
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    padding: '16px 24px',
+                    background: hasData ? 'rgba(34, 197, 94, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+                    borderRadius: '12px',
+                    border: `1px dashed ${hasData ? 'rgba(34, 197, 94, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
+                }}>
+                    <span style={{ fontSize: '24px' }}>{hasData ? '✅' : '📁'}</span>
+                    <div>
+                        <div style={{ fontWeight: '500', marginBottom: '4px' }}>
+                            {hasData ? 'Data Loaded' : 'Load Battery Data'}
+                        </div>
+                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                            {hasData
+                                ? 'Upload another file to replace current data'
+                                : <>Upload a JSON export from <code className="mono" style={{
+                                    background: 'rgba(255,255,255,0.1)',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                }}>battery export</code></>
+                            }
+                        </div>
+                    </div>
+                    <label style={{
+                        marginLeft: 'auto',
+                        padding: '8px 16px',
+                        background: hasData ? '#22c55e' : '#3b82f6',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                    }}>
+                        {hasData ? 'Load New File' : 'Choose File'}
+                        <input
+                            type="file"
+                            accept=".json"
+                            onChange={handleFileChange}
+                            style={{ display: 'none' }}
+                        />
+                    </label>
+                </div>
+            );
+        };
+
+        const EmptyState = ({ onDataLoad }) => (
+            <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '60vh',
+                textAlign: 'center',
+                padding: '48px',
+            }}>
+                <div style={{ fontSize: '64px', marginBottom: '24px' }}>🔋</div>
+                <h2 style={{ fontSize: '24px', marginBottom: '16px' }}>
+                    Battery Monitor Dashboard
+                </h2>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', maxWidth: '400px' }}>
+                    Upload your battery data export to visualize your MacBook's battery health,
+                    usage patterns, and power consumption.
+                </p>
+                <div style={{ marginBottom: '24px' }}>
+                    <FileUpload onDataLoad={onDataLoad} hasData={false} />
+                </div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    <p>Generate an export with:</p>
+                    <code className="mono" style={{
+                        display: 'inline-block',
+                        background: 'rgba(255,255,255,0.1)',
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        marginTop: '8px',
+                    }}>
+                        battery export -o battery_data.json
+                    </code>
+                </div>
+            </div>
+        );
+
+        const App = () => {
+            const [data, setData] = useState(null);
+
+            if (!data) {
+                return (
+                    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '32px 24px' }}>
+                        <EmptyState onDataLoad={setData} />
+                    </div>
+                );
+            }
+
+            // Get current battery level from snapshots or daily stats
+            const latestSnapshot = data.snapshots?.[data.snapshots.length - 1];
+            const latestDaily = data.daily_stats?.[0];
+            const currentPercentage = latestSnapshot?.percentage || latestDaily?.max_percentage || 0;
+            const avgHealth = data.summary?.avg_health || 100;
+
+            return (
+                <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '32px 24px' }}>
+                    {/* Header */}
+                    <header style={{ marginBottom: '32px' }}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            marginBottom: '8px',
+                        }}>
+                            <span style={{ fontSize: '32px' }}>🔋</span>
+                            <h1 style={{ fontSize: '28px', fontWeight: '600' }}>
+                                Battery Monitor
+                            </h1>
+                        </div>
+                        <p style={{ color: 'var(--text-secondary)' }}>
+                            Tracking since {data.summary?.first_snapshot?.slice(0, 10) || 'N/A'}
+                        </p>
+                    </header>
+
+                    {/* File Upload */}
+                    <div style={{ marginBottom: '32px' }}>
+                        <FileUpload onDataLoad={setData} hasData={true} />
+                    </div>
+
+                    {/* Stats Grid */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: '16px',
+                        marginBottom: '24px',
+                    }}>
+                        <BatteryGauge
+                            percentage={currentPercentage}
+                            health={avgHealth}
+                        />
+                        <StatCard
+                            icon="🔄"
+                            label="Cycle Count"
+                            value={data.summary?.current_cycles || 0}
+                            unit="cycles"
+                            color="#3b82f6"
+                        />
+                        <StatCard
+                            icon="⚡"
+                            label="Avg Drain Power"
+                            value={(data.summary?.avg_discharge_wattage || 0).toFixed(1)}
+                            unit="watts"
+                            color="#eab308"
+                        />
+                        <StatCard
+                            icon="📊"
+                            label="Total Snapshots"
+                            value={(data.summary?.total_snapshots || 0).toLocaleString()}
+                            unit="records"
+                            color="#a855f7"
+                            subtext={`${data.snapshots?.length || 0} in export`}
+                        />
+                    </div>
+
+                    {/* Daily Stats */}
+                    <div style={{ marginBottom: '24px' }}>
+                        <DailyStatsChart data={data.daily_stats || []} />
+                    </div>
+
+                    {/* Timeline */}
+                    <div style={{ marginBottom: '24px' }}>
+                        <TimelineChart data={data.snapshots || []} />
+                    </div>
+
+                    {/* Charts Grid */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+                        gap: '24px',
+                        marginBottom: '24px',
+                    }}>
+                        <DrainChart data={data.drain_patterns || []} />
+                        <AppImpactChart data={data.app_frequency || []} />
+                    </div>
+
+                    {/* Tables Grid */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+                        gap: '24px',
+                        marginBottom: '24px',
+                    }}>
+                        <SessionsTable data={data.discharge_sessions || []} />
+                        <PowerAssertionsTable data={data.power_assertions || []} />
+                    </div>
+
+                    {/* Footer */}
+                    <footer style={{
+                        marginTop: '48px',
+                        textAlign: 'center',
+                        color: 'var(--text-secondary)',
+                        fontSize: '13px',
+                    }}>
+                        <p>
+                            Battery Monitor Dashboard
+                        </p>
+                    </footer>
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
