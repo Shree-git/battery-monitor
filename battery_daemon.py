@@ -125,37 +125,11 @@ def start_daemon(interval: int = 60, foreground: bool = False):
     if is_running():
         print("Battery Monitor is already running.")
         return
-    
+
     if not foreground:
-        # Fork to background
-        try:
-            pid = os.fork()
-            if pid > 0:
-                print(f"Battery Monitor started (PID: {pid})")
-                return
-        except OSError as e:
-            print(f"Fork failed: {e}")
-            sys.exit(1)
-        
-        # Create new session
-        os.setsid()
-        
-        # Fork again
-        try:
-            pid = os.fork()
-            if pid > 0:
-                sys.exit(0)
-        except OSError:
-            sys.exit(1)
-        
-        # Redirect stdout/stderr
-        sys.stdout.flush()
-        sys.stderr.flush()
-        
-        null = open('/dev/null', 'w')
-        os.dup2(null.fileno(), sys.stdout.fileno())
-        os.dup2(null.fileno(), sys.stderr.fileno())
-    
+        print("Use launchd to run as daemon, or -f for foreground mode.")
+        return
+
     # Write PID file
     pid_file = get_pid_file()
     pid_file.parent.mkdir(parents=True, exist_ok=True)

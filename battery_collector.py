@@ -52,7 +52,9 @@ def run_command(cmd: str) -> str:
             cmd, shell=True, capture_output=True, text=True, timeout=10
         )
         return result.stdout
-    except Exception as e:
+    except subprocess.TimeoutExpired:
+        return ""
+    except subprocess.SubprocessError:
         return ""
 
 
